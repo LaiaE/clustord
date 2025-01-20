@@ -256,7 +256,7 @@ osm <- function(formula, data, weights, start, ..., subset,
     if(llev <= 2L) stop("response must have 3 or more levels")
     y <- unclass(y)
     qminus <- llev - 1L
-
+    
     ## Generate starting values for optimization
     if(missing(start)) {
         # try logistic/probit regression on 'middle' cut to find starting
@@ -305,7 +305,7 @@ osm <- function(formula, data, weights, start, ..., subset,
         ## Construct the full starting values vector, using the fact that
         ## coefs[1L] has already been incorporated into the gammas object
         start <- c(coefs[-1L], gammas, u2, us)
-    } else if(length(start) != num_beta + (qminus-1) + (qminus-2))
+    } else if(length(start) != num_beta + (llev-1) + (llev-2))
         stop("'start' is not of the correct length")
 
     ## Now run the fitting
@@ -444,3 +444,4 @@ print.osm <- function(x, ...)
         cat("Warning: did not converge as iteration limit reached\n")
     invisible(x)
 }
+
