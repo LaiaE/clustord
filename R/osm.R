@@ -320,6 +320,7 @@ osm <- function(formula, data, weights, start, ..., subset,
     phi <- ans$phi
     res <- ans$res
     deviance <- ans$deviance
+    u <- ans$u
 
     ## Calculate the fitted values of each observation, which are the probabilities
     ## of getting each of the levels of the response
@@ -334,9 +335,10 @@ osm <- function(formula, data, weights, start, ..., subset,
     ## Count the number of calls to the function, some of which were used
     ## to numerically calculate the gradient
     niter <- c(f.evals = res$counts[1L], g.evals = res$counts[2L])
+    
 
     ## Construct the output object
-    fit <- list(beta = beta, mu = mu, phi = phi, deviance = deviance,
+    fit <- list(beta = beta, mu = mu, phi = phi, u = u, deviance = deviance,
                 fitted.values = fitted, lev = lev, terms = Terms,
                 df.residual = sum(wt) - num_beta - qminus - (qminus-1),
                 edf = num_beta + qminus + (qminus-1), n = sum(wt),
