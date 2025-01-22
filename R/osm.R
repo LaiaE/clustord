@@ -447,3 +447,108 @@ print.osm <- function(x, ...)
     invisible(x)
 }
 
+#' @export
+vcov.osm <- function(object, ...){
+  
+  pc <- length(object$beta)
+  llev <- length(object$lev)
+  num_mu_k <- llev - 1L
+  ind_mu_k <- seq_len(num_mu_k)
+  num_u_k <- length(object$u)
+  ind_u_k <- seq_len(num_u_k)
+  
+  if(is.null(object$Hessian)) {
+    message("\nRe-fitting to get Hessian\n")
+    utils::flush.console()
+    object <- update(object, Hess = TRUE,
+                     start = c(object$beta, object$mu[ind_mu_k + 1L], object$phi[ind_u_k + 1L]))
+  }
+  
+  vc <- ginv(object$Hessian)
+  
+  # delta method
+  u <- object$u
+  u.ind <- pc + num_mu_k + seq_along(ind_u_k)
+  
+  # Define reparametrization in formula format
+  create_formula <- function(indices) {
+    paste0("~ 1 / (1 + exp(-((", paste(indices, collapse = ") + exp("), "))))")
+  }
+  
+  syms <- paste0("x", ind_u_k)
+  formulas <- lapply(seq_along(syms), function(i) { create_formula(syms[1:i])})
+  trans.formula <- lapply(formulas, as.formula)
+  
+  for (i in ind_u_k) {
+    assign(syms[i], u[i])
+  }
+  
+  J <- sapply(trans.formula, function(form) { as.numeric(attr(eval(deriv(form, syms)), "gradient")) })
+  
+  A <- diag(pc + num_mu_k + num_u_k)
+  A[u.ind, u.ind] <- J
+  
+  V <- A %*% vc %*% t(A)
+  
+  structure(V, dimnames = lapply(dimnames(object$Hessian), function(x) gsub("phiAux", "phi", x)))
+}
+
+#' @export
+summary.osm <- function(object, digits = max(3, .Options$digits - 3), correlation = FALSE,...){
+  pc <- length(object$beta)
+  q <- length(object$phi)
+  names(object$phi) <- paste0("phi", names(object$phi))
+  cc <- c(object$beta, object$mu[-1L], object$phi[c(-1L, -q)])
+  coef <- matrix(0, pc+2*q-3, 3L, dimnames=list(names(cc),
+                                                c("Value", "Std. Error", "t value")))
+  coef[, 1L] <- cc
+  vc <- vcov(object)
+  coef[, 2L] <- sd <- sqrt(diag(vc))
+  coef[, 3L] <- coef[, 1L]/coef[, 2L]
+  object$coefficients <- coef
+  object$pc <- pc
+  object$q <- q
+  object$digits <- digits
+  if(correlation)
+    object$correlation <- (vc/sd)/rep(sd, rep(pc+2L*q-3L, pc+2L*q-3L))
+  class(object) <- "summary.osm"
+  object
+}
+
+#' @export
+print.summary.osm <- function(x, digits = x$digits, ...){
+  if(!is.null(cl <- x$call)) {
+    cat("Call:\n")
+    dput(cl, control=NULL)
+  }
+  coef <- format(round(x$coefficients, digits=digits))
+  pc <- x$pc
+  q <- x$q
+  if(pc > 0) {
+    cat("\nCoefficients (beta):\n")
+    print(x$coefficients[seq_len(pc), , drop=FALSE], quote = FALSE,
+          digits = digits, ...)
+  } else {
+    cat("\nNo coefficients\n")
+  }
+  cat("\nIntercepts (mu):\n")
+  print(coef[(pc+1L):(nrow(coef)-q+2), , drop=FALSE], quote = FALSE,
+        digits = digits, ...) 
+  
+  cat("\nScore parameters (phi):\n")
+  print(coef[(nrow(coef)-q+3):nrow(coef), , drop=FALSE], quote = FALSE,
+        digits = digits, ...)
+  
+  cat("\nResidual Deviance:", format(x$deviance, nsmall=2L), "\n")
+  cat("AIC:", format(x$deviance + 2*x$edf, nsmall=2L), "\n")
+  if(nzchar(mess <- naprint(x$na.action))) cat("(", mess, ")\n", sep="")
+  if(!is.null(correl <- x$correlation)) {
+    cat("\nCorrelation of Coefficients:\n")
+    ll <- lower.tri(correl)
+    correl[ll] <- format(round(correl[ll], digits))
+    correl[!ll] <- ""
+    print(correl[-1L, -ncol(correl)], quote = FALSE, ...)
+  }
+  invisible(x)
+}
+
