@@ -497,14 +497,29 @@ vcov.osm <- function(object, ...){
 summary.osm <- function(object, digits = max(3, .Options$digits - 3), correlation = FALSE,...){
   pc <- length(object$beta)
   q <- length(object$phi)
-  cc <- c(object$beta, object$mu[-1L], object$phi[c(-1L, -q)])
-  coef <- matrix(0, pc+2*q-3, 3L, dimnames=list(names(cc),
+  cc <- c(object$beta, object$mu[-1L])
+  coef <- matrix(0, pc+q-1L, 3L, dimnames=list(names(cc),
                                                 c("Value", "Std. Error", "t value")))
   coef[, 1L] <- cc
   vc <- vcov(object)
-  coef[, 2L] <- sd <- sqrt(diag(vc))
+  sd <- sqrt(diag(vc))
+  coef[, 2L] <- sd[seq_len(pc+q-1)]
   coef[, 3L] <- coef[, 1L]/coef[, 2L]
+  
+  phi <- object$phi
+  coef.phi <- matrix(0, q-2L, 4L, dimnames=list(names(phi)[c(-1L, -q)],c("Value", "Std. Error", 
+                                                           "t value (k-1)", "t value (k+1)")))
+  coef.phi[, 1L] <- phi[c(-1L, -q)]
+  coef.phi[, 2L] <- sd[pc+q-1L + seq_len(q-2L)]
+  
+  vc.phi <- cbind(0, rbind(0,vc[pc+q-1L + seq_len(q-2L),pc+q-1L + seq_len(q-2L)],0),0)
+  v.phi <- diag(vc.phi)
+  k <- 2:(q-1)
+  coef.phi[k-1, 3L] <- (phi[k]-phi[k-1L])/sqrt(v.phi[k] + v.phi[k-1L] - 2*vc.phi[k,k-1L])
+  coef.phi[k-1, 4L] <- (phi[k]-phi[k+1L])/sqrt(v.phi[k] + v.phi[k+1L] - 2*vc.phi[k,k+1L])
+
   object$coefficients <- coef
+  object$coefficients.phi <- coef.phi
   object$pc <- pc
   object$q <- q
   object$digits <- digits
@@ -521,6 +536,7 @@ print.summary.osm <- function(x, digits = x$digits, ...){
     dput(cl, control=NULL)
   }
   coef <- format(round(x$coefficients, digits=digits))
+  coef.phi <- format(round(x$coefficients.phi, digits=digits))
   pc <- x$pc
   q <- x$q
   if(pc > 0) {
@@ -535,7 +551,7 @@ print.summary.osm <- function(x, digits = x$digits, ...){
         digits = digits, ...) 
   
   cat("\nScore parameters (phi):\n")
-  print(coef[(nrow(coef)-q+3):nrow(coef), , drop=FALSE], quote = FALSE,
+  print(coef.phi[,,drop=FALSE], quote = FALSE,
         digits = digits, ...)
   
   cat("\nResidual Deviance:", format(x$deviance, nsmall=2L), "\n")
