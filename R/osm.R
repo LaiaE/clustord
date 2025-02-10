@@ -541,6 +541,7 @@ print.summary.osm <- function(x, digits = x$digits, ...){
   
   cat("\nResidual Deviance:", format(x$deviance, nsmall=2L), "\n")
   cat("AIC:", format(x$deviance + 2*x$edf, nsmall=2L), "\n")
+  cat("BIC:", format(x$deviance + x$edf*log(x$n), nsmall=2L), "\n")
   if(nzchar(mess <- naprint(x$na.action))) cat("(", mess, ")\n", sep="")
   if(!is.null(correl <- x$correlation)) {
     cat("\nCorrelation of Coefficients:\n")
