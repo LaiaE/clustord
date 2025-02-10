@@ -490,7 +490,6 @@ vcov.osm <- function(object, ...){
   
   V <- A %*% vc %*% t(A)
   
-  # structure(V, dimnames = lapply(dimnames(object$Hessian), function(x) gsub("phiAux", "phi", x)))
   structure(V, dimnames = lapply(dimnames(object$Hessian), function(x) gsub("phiAux", "", x)))
 }
 
@@ -553,6 +552,7 @@ print.summary.osm <- function(x, digits = x$digits, ...){
   invisible(x)
 }
 
+#' @export
 anova.osm <- function (object, ..., test = c("Chisq", "none"))
 {
   test <- match.arg(test)
@@ -589,75 +589,3 @@ anova.osm <- function (object, ..., test = c("Chisq", "none"))
   out
 }
 
-profile.polr <- function(fitted, which = 1L:p, alpha = 0.01,
-                         maxsteps = 10, del = zmax/5, trace = FALSE, ...)
-{
-  Pnames <- names(B0 <- coef(fitted))
-  pv0 <- t(as.matrix(B0))
-  p <- length(Pnames)
-  if(is.character(which)) which <- match(which, Pnames)
-  summ <- summary(fitted)
-  std.err <- summ$coefficients[, "Std. Error"]
-  mf <- model.frame(fitted)
-  n <- length(Y <- model.response(mf))
-  O <- model.offset(mf)
-  if(!length(O)) O <- rep(0, n)
-  W <- model.weights(mf)
-  if(length(W) == 0L) W <- rep(1, n)
-  OriginalDeviance <- deviance(fitted)
-  X <- model.matrix(fitted)[, -1L, drop=FALSE] # drop intercept
-  zmax <- sqrt(qchisq(1 - alpha, 1))
-  profName <- "z"
-  prof <- vector("list", length=length(which))
-  names(prof) <- Pnames[which]
-  start <- c(fitted$coefficients, fitted$zeta)
-  for(i in which) {
-    zi <- 0
-    pvi <- pv0
-    Xi <- X[,  - i, drop = FALSE]
-    pi <- Pnames[i]
-    for(sgn in c(-1, 1)) {
-      if(trace) {
-        message("\nParameter:", pi, c("down", "up")[(sgn + 1)/2 + 1])
-        utils::flush.console()
-      }
-      step <- 0
-      z <- 0
-      ## LP is the linear predictor including offset.
-      ## LP <- X %*% fitted$coef + O
-      while((step <- step + 1) < maxsteps && abs(z) < zmax) {
-        bi <- B0[i] + sgn * step * del * std.err[i]
-        o <- O + X[, i] * bi
-        fm <- polr.fit(x = Xi, y = Y, wt = W, start = start[-i],
-                       offset = o, method = fitted$method)
-        ri <- pv0
-        ri[, names(coef(fm))] <- coef(fm)
-        ri[, pi] <- bi
-        pvi <- rbind(pvi, ri)
-        zz <- fm$deviance - OriginalDeviance
-        if(zz > - 1e-3) zz <- max(zz, 0)
-        else stop("profiling has found a better solution, so original fit had not converged")
-        z <- sgn * sqrt(zz)
-        zi <- c(zi, z)
-      }
-    }
-    si <- order(zi)
-    prof[[pi]] <- structure(data.frame(zi[si]), names = profName)
-    prof[[pi]]$par.vals <- pvi[si, , drop = FALSE]
-  }
-  val <- structure(prof, original.fit = fitted, summary = summ)
-  class(val) <- c("profile.polr", "profile")
-  val
-}
-
-confint.polr <- function(object, parm, level = 0.95, trace = FALSE, ...)
-{
-  pnames <- names(coef(object))
-  if(missing(parm)) parm <- seq_along(pnames)
-  else if(is.character(parm))  parm <- match(parm, pnames, nomatch = 0L)
-  message("Waiting for profiling to be done...")
-  utils::flush.console()
-  object <- profile(object, which = parm, alpha = (1. - level)/4.,
-                    trace = trace)
-  confint(object, parm=parm, level=level, trace=trace, ...)
-}
