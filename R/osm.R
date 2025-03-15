@@ -494,35 +494,43 @@ vcov.osm <- function(object, ...){
 }
 
 #' @export
-summary.osm <- function(object, digits = max(3, .Options$digits - 3), correlation = FALSE,...){
+summary.osm <- function(object, digits = max(3L, .Options$digits - 3L), correlation = FALSE, 
+                        signif.stars = getOption("show.signif.stars"),...){
   pc <- length(object$beta)
   q <- length(object$phi)
   cc <- c(object$beta, object$mu[-1L])
-  coef <- matrix(0, pc+q-1L, 3L, dimnames=list(names(cc),
-                                                c("Value", "Std. Error", "t value")))
+  coef <- matrix(0, pc+q-1L, 4L, dimnames=list(names(cc),
+                                               c("Value", "Std. Error", "t value", "Pr(>|t|)")))
   coef[, 1L] <- cc
   vc <- vcov(object)
   sd <- sqrt(diag(vc))
   coef[, 2L] <- sd[seq_len(pc+q-1)]
   coef[, 3L] <- coef[, 1L]/coef[, 2L]
+  coef[, 4L] <- 2 * pnorm(-abs(coef[, 3L]))
+  
   
   phi <- object$phi
-  coef.phi <- matrix(0, q-2L, 4L, dimnames=list(names(phi)[c(-1L, -q)],c("Value", "Std. Error", 
-                                                           "t value (k-1)", "t value (k+1)")))
+  coef.phi <- matrix(0, q-2L, 2L, dimnames=list(names(phi)[c(-1L, -q)],c("Value", "Std. Error")))
   coef.phi[, 1L] <- phi[c(-1L, -q)]
   coef.phi[, 2L] <- sd[pc+q-1L + seq_len(q-2L)]
   
   vc.phi <- cbind(0, rbind(0,vc[pc+q-1L + seq_len(q-2L),pc+q-1L + seq_len(q-2L)],0),0)
   v.phi <- diag(vc.phi)
   k <- 2:(q-1)
-  coef.phi[k-1, 3L] <- (phi[k]-phi[k-1L])/sqrt(v.phi[k] + v.phi[k-1L] - 2*vc.phi[k,k-1L])
-  coef.phi[k-1, 4L] <- (phi[k]-phi[k+1L])/sqrt(v.phi[k] + v.phi[k+1L] - 2*vc.phi[k,k+1L])
+  test.phi <- matrix(0, q-1L, 2L, dimnames=list(c(paste(names(phi)[1L], "vs", names(phi)[2L]), 
+                                                       paste(names(phi)[k], "vs", names(phi)[k+1])),
+                                                     c("t value", "Pr(>|t|)")))
+  test.phi[1L, 1L] <- (phi[2L]-phi[1L])/sqrt(v.phi[2L] + v.phi[1L] - 2*vc.phi[2L,1L])
+  test.phi[k, 1L] <- (phi[k]-phi[k+1L])/sqrt(v.phi[k] + v.phi[k+1L] - 2*vc.phi[cbind(k, k + 1L)])
+  test.phi[, 2L] <- 2 * pnorm(-abs(test.phi[, 1L]))
 
   object$coefficients <- coef
   object$coefficients.phi <- coef.phi
+  object$test.phi <- test.phi
   object$pc <- pc
   object$q <- q
   object$digits <- digits
+  object$signif.stars <- signif.stars
   if(correlation)
     object$correlation <- (vc/sd)/rep(sd, rep(pc+2L*q-3L, pc+2L*q-3L))
   class(object) <- "summary.osm"
@@ -530,29 +538,49 @@ summary.osm <- function(object, digits = max(3, .Options$digits - 3), correlatio
 }
 
 #' @export
-print.summary.osm <- function(x, digits = x$digits, ...){
+print.summary.osm <- function(x, digits = x$digits, signif.stars = x$signif.stars, ...){
   if(!is.null(cl <- x$call)) {
     cat("Call:\n")
     dput(cl, control=NULL)
   }
-  coef <- format(round(x$coefficients, digits=digits))
-  coef.phi <- format(round(x$coefficients.phi, digits=digits))
+  coef <- x$coefficients
+  coef.phi <- x$coefficients.phi
+  test.phi <- x$test.phi
+  # coef <- format(round(x$coefficients, digits=digits))
+  # coef.phi <- format(round(x$coefficients.phi, digits=digits))
   pc <- x$pc
   q <- x$q
   if(pc > 0) {
     cat("\nCoefficients (beta):\n")
-    print(x$coefficients[seq_len(pc), , drop=FALSE], quote = FALSE,
-          digits = digits, ...)
+    printCoefmat(coef[seq_len(pc), , drop=FALSE], digits = digits, quote = FALSE, 
+                 signif.stars = signif.stars, signif.legend = FALSE, na.print = "NA", ...)
   } else {
     cat("\nNo coefficients\n")
   }
   cat("\nIntercepts (mu):\n")
-  print(coef[(pc+1L):(nrow(coef)-q+2), , drop=FALSE], quote = FALSE,
-        digits = digits, ...) 
+  printCoefmat(coef[(pc+1L):nrow(coef), , drop=FALSE], digits = digits, quote = FALSE, 
+               signif.stars = signif.stars, signif.legend = FALSE, na.print = "NA", ...)
   
   cat("\nScore parameters (phi):\n")
   print(coef.phi[,,drop=FALSE], quote = FALSE,
         digits = digits, ...)
+  
+  cat("\nTest Score parameters (phi):\n")
+  
+  printCoefmat(test.phi, digits = digits, quote = FALSE, P.values = TRUE, has.Pvalue = TRUE,
+               signif.stars = signif.stars, signif.legend = FALSE, na.print = "NA", ...)
+  
+  if(signif.stars){
+    pv <- c(coef[,"Pr(>|t|)"], test.phi[,"Pr(>|t|)"])
+    Signif <- symnum(pv, corr = FALSE, na = FALSE, 
+                     cutpoints = c(0, 0.001, 0.01, 0.05, 0.1, 1), 
+                     symbols = c("***", "**", "*", ".", " "))
+    w <- getOption("width")
+    sleg <- attr(Signif, "legend")
+    sleg <- strwrap(sleg, width = w - 2, prefix = "  ")
+    cat("---\nSignif. codes:  ", sleg, sep = "", fill = w + 
+          4 + max(nchar(sleg, "bytes") - nchar(sleg)))
+  } 
   
   cat("\nResidual Deviance:", format(x$deviance, nsmall=2L), "\n")
   cat("AIC:", format(x$deviance + 2*x$edf, nsmall=2L), "\n")
