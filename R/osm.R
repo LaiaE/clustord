@@ -488,10 +488,11 @@ vcov.osm <- function(object, ...){
   A <- diag(pc + num_mu_k + num_u_k)
   A[u.ind, u.ind] <- J
   
-  V <- A %*% vc %*% t(A)
+  V <- t(A) %*% vc %*% A
   
   structure(V, dimnames = lapply(dimnames(object$Hessian), function(x) gsub("phiAux", "", x)))
 }
+
 
 #' @export
 summary.osm <- function(object, digits = max(3L, .Options$digits - 3L), correlation = FALSE, 
